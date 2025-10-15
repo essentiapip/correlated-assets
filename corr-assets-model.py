@@ -43,12 +43,7 @@ polygon_api_key = "KkfCQ7fsZnx0yK4bhX9fD81QplTh0Pf3"
 # L/S Data
 # =============================================================================
 
-trading_dates = calendar.schedule(start_date = "2025-01-01", end_date = (datetime.today()-timedelta(days = 1))).index.strftime("%Y-%m-%d").values
-
-# Keep 1 session active (same headers, etc.)
-connection_session = requests.Session()
-adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=500)
-connection_session.mount('https://', adapter)
+trading_dates = calendar.schedule(start_date = "2023-01-01", end_date = (datetime.today()-timedelta(days = 1))).index.strftime("%Y-%m-%d").values
 
 full_basket_list = []
 times = []
@@ -56,7 +51,7 @@ times = []
 trade_list = []
 
 # date = trading_dates[0] # np.where(trading_dates==date)
-for date in trading_dates[100:]:
+for date in trading_dates:
     
     try:
         
@@ -160,6 +155,12 @@ for date in trading_dates[100:]:
         
         lookback_date_range = np.sort(all_trading_dates[all_trading_dates < date])[-20:]
         
+        # Keep 1 session active (same headers, etc.)
+        connection_session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=500)
+        connection_session.mount('https://', adapter)
+
+        
         # pair = full_corr_pairs.index[0]
         for pair in full_corr_pairs.index:
             
@@ -224,8 +225,8 @@ for date in trading_dates[100:]:
         print(error)
         continue
             
-all_trades = pd.concat(trade_list)#.groupby("date").mean(numeric_only=True).reset_index()
-all_trades = all_trades[all_trades["px_corr"]>=.9].drop_duplicates(subset=["date"], keep="first").copy()
+all_trades = pd.concat(trade_list)#.drop_duplicates(subset=["date"], keep="first").copy()#.groupby("date").mean(numeric_only=True).reset_index()
+# all_trades = all_trades[all_trades["px_corr"]>=.9].drop_duplicates(subset=["date"], keep="first").copy()
 # all_trades["long_ticker"] = long_ticker
 # all_trades["short_ticker"] = short_ticker
 
@@ -292,6 +293,7 @@ for complete_date in completed_trade_dates:
     complete_trade_list.append(oos_best_performer)
     
 optimal_trades = pd.concat(complete_trade_list)
+optimal_trades = optimal_trades[optimal_trades["prob_1"] >= .80].copy()
 
 optimal_trades["adj_pnl"] = (optimal_trades["return"]/100) * notional
 optimal_trades["adj_capital"] = notional + optimal_trades["adj_pnl"].cumsum()    
