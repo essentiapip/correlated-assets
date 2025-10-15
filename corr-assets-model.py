@@ -55,8 +55,8 @@ times = []
 
 trade_list = []
 
-# date = trading_dates[0]
-for date in trading_dates:
+# date = trading_dates[0] # np.where(trading_dates==date)
+for date in trading_dates[100:]:
     
     try:
         
@@ -224,11 +224,12 @@ for date in trading_dates:
         print(error)
         continue
             
-all_trades = pd.concat(trade_list)
-all_trades["long_ticker"] = long_ticker
-all_trades["short_ticker"] = short_ticker
+all_trades = pd.concat(trade_list)#.groupby("date").mean(numeric_only=True).reset_index()
+all_trades = all_trades[all_trades["px_corr"]>=.9].drop_duplicates(subset=["date"], keep="first").copy()
+# all_trades["long_ticker"] = long_ticker
+# all_trades["short_ticker"] = short_ticker
 
-all_trades["dollar_pnl"] = ((all_trades["gross_return"]/100) * notional)
+all_trades["dollar_pnl"] = ((all_trades["return"]/100) * notional)
 
 all_trades["return_on_size"] = round((all_trades["dollar_pnl"] / notional)*100, 2)
 all_trades["rolling_std"] = all_trades["return_on_size"].rolling(window=5).std()
@@ -237,10 +238,28 @@ all_trades["capital"] = notional + all_trades["dollar_pnl"].cumsum()
 all_trades["strategy_return"] = round(((all_trades["capital"] - notional) / notional)*100, 2)
 all_trades["strategy_sharpe"] = round(all_trades["strategy_return"] / (all_trades["rolling_std"] * np.sqrt(5)), 2)
 
-    
-complete_trade_data = pd.concat(all_trades_list)
+plt.figure(dpi=200)
+plt.xticks(rotation = 45)
+plt.suptitle(f"Optimal-Ranked Pairs")
+plt.plot(pd.to_datetime(all_trades["date"]).values, all_trades["capital"].values)
+plt.legend(["capital"])
+plt.show()
+plt.close()
+
+
+len(all_trades[all_trades["return_on_size"] > 0]) / len(all_trades)
+
+from catboost import CatBoostClassifier
+
+
+complete_trade_data = pd.concat(trade_list)
 
 completed_trade_dates = np.sort(complete_trade_data["date"].drop_duplicates().values)[20:]
+
+
+
+model_features = ["long_ticker_x", "short_ticker_y","px_corr", "ret_corr", "long_wt"]
+target = "signal"
 
 complete_trade_list = []
 
@@ -248,14 +267,27 @@ complete_trade_list = []
 for complete_date in completed_trade_dates:
     
     prior_trade_date = np.sort(all_trading_dates[all_trading_dates < complete_date])[-1]
+    prior_trade_start = np.sort(all_trading_dates[all_trading_dates < complete_date])[-20]
     
-    prior_day_trades = complete_trade_data[complete_trade_data["date"] == prior_trade_date].copy()
+    historical_data = complete_trade_data[(complete_trade_data["date"] >= prior_trade_start) & (complete_trade_data["date"] <= prior_trade_date)].copy()
     
-    best_performer = prior_day_trades.sort_values(by="strategy_sharpe", ascending=False).head(1)
+    X = historical_data[model_features]
+    Y = historical_data[target]
+
+    Model = CatBoostClassifier(cat_features=["long_ticker_x", "short_ticker_y"], iterations=100).fit(X, Y)
     
-    trade_day_data = complete_trade_data[complete_trade_data["date"] == complete_date].copy()
+    oos_data = complete_trade_data[(complete_trade_data["date"] == complete_date)].copy()
     
-    oos_best_performer = trade_day_data[trade_day_data["long_ticker"] == best_performer["long_ticker"].iloc[0]].copy()
+    X_oos = oos_data[model_features]
+    
+    predictions = Model.predict(X_oos)
+    probas = Model.predict_proba(X_oos)
+
+    oos_data["prediction"] = predictions
+    oos_data["prob_0"] = np.float64(probas[:, 0])
+    oos_data["prob_1"] = np.float64(probas[:, 1])
+    
+    oos_best_performer = oos_data.copy().sort_values(by="prob_1", ascending=False).head(1)
     
     complete_trade_list.append(oos_best_performer)
     
