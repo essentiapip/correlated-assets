@@ -34,8 +34,8 @@ polygon_api_key = "KkfCQ7fsZnx0yK4bhX9fD81QplTh0Pf3"
 # L/S Data
 # =============================================================================
 
-# trading_dates = calendar.schedule(start_date = "2025-01-01", end_date = (datetime.today()-timedelta(days = 1))).index.strftime("%Y-%m-%d").values
-trading_dates = calendar.schedule(start_date = "2025-02-01", end_date = "2025-06-01").index.strftime("%Y-%m-%d").values
+trading_dates = calendar.schedule(start_date = "2025-01-01", end_date = (datetime.today()-timedelta(days = 1))).index.strftime("%Y-%m-%d").values
+# trading_dates = calendar.schedule(start_date = "2025-02-01", end_date = "2025-06-01").index.strftime("%Y-%m-%d").values
 lookback_date = np.sort(all_trading_dates[all_trading_dates < trading_dates[0]])[-252]
 
 tickers = np.array([["RGTI", "IONQ"], ["RIOT", "MARA"], ["OKLO","SMR"], ["CVNA", "KMX"]])
@@ -211,6 +211,8 @@ plt.plot(pd.to_datetime(optimal_trades["date"]).values, optimal_trades["adj_capi
 plt.legend(["optimal"])
 plt.show()
 plt.close()
+
+len(optimal_trades[optimal_trades["adj_pnl"] > 0]) / len(optimal_trades)
 
 active_trades = all_trades[all_trades["model_pnl"] != 0].copy()
 
