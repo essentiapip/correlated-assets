@@ -177,85 +177,38 @@ for ticker_set in tickers:
         print(error)
         continue
     
-dates_to_model = dates_in_coverage[253:]
-
-prediction_data_list = []
-
-# date = dates_to_model[-15]
-for date in dates_to_model:
     
-    try:
-        
-        historical_data = full_dataset[full_dataset["date"] < date].copy().reset_index(drop=True).tail(252)
+complete_trade_data = pd.concat(all_trades_list)
 
-        # Create an array like you would in R
-        X = historical_data["error"]
-        
-        # Compute an auto-correlation like you would in R:
-        # pm.acf(X)
-        
-        # # Plot an auto-correlation:
-        # pm.plot_acf(X)
-        
-        stepwise_fit = pm.auto_arima(X, stepwise=True)
-        stepwise_fit.summary()
-        
-        forecast = stepwise_fit.predict(n_periods = 1).iloc[0]
-        
-        # X = historical_data[["error"]].values
-        # Y = historical_data[["next_error"]].values
-        
-        # Model = RandomForestRegressor(n_estimators=1000).fit(X, Y)
-        
-        # Model = sm.tsa.ARIMA(X, order=(1, 0, 0)).fit()      
-        
-        # Make a one-step-ahead forecast
-        # forecast = Model.forecast(steps=1)
-        
-        oos_data = full_dataset[full_dataset["date"] == date].copy()
-        
-        # X_oos = oos_data[["error"]].values
-        
-        # forecast = Model.predict(X_oos)[0]
-        
-        # actual = full_dataset["error"].iloc[0]
-        actual = oos_data["error"].iloc[0]
-        
-        # prediction_data = pd.DataFrame([{"date": date, "pred": forecast.iloc[0], "actual": actual}])
-        prediction_data = pd.DataFrame([{"date": date, "pred": forecast, "actual": actual}])
-        
-        oos_data = pd.merge(oos_data, prediction_data, on="date")
+completed_trade_dates = np.sort(complete_trade_data["date"].drop_duplicates().values)[20:]
+
+complete_trade_list = []
+
+# complete_date = completed_trade_dates[0]
+for complete_date in completed_trade_dates:
     
-        prediction_data_list.append(oos_data)
-        
-    except Exception as error:
-        print(error)
-        continue
+    prior_trade_date = np.sort(all_trading_dates[all_trading_dates < complete_date])[-1]
+    
+    prior_day_trades = complete_trade_data[complete_trade_data["date"] == prior_trade_date].copy()
+    
+    best_performer = prior_day_trades.sort_values(by="strategy_sharpe", ascending=False).head(1)
+    
+    trade_day_data = complete_trade_data[complete_trade_data["date"] == complete_date].copy()
+    
+    oos_best_performer = trade_day_data[trade_day_data["long_ticker"] == best_performer["long_ticker"].iloc[0]].copy()
+    
+    complete_trade_list.append(oos_best_performer)
+    
+optimal_trades = pd.concat(complete_trade_list)
 
-# =============================================================================
-# Pnl + Ev Calcs
-# =============================================================================
-
-all_trades = pd.concat(prediction_data_list)
-
-notional = 10000
-
-costs = notional * .0025
-
-all_trades["base_pnl"] = (notional * (all_trades["error"]/100)) - costs
-all_trades["model_pnl"] = all_trades.apply(lambda x: x["base_pnl"] if x["pred"] > 0 else 0, axis = 1)
-
-all_trades["return_on_size"] = round((all_trades["model_pnl"] / notional)*100, 2)
-
-all_trades["base_capital"] = notional + (all_trades["base_pnl"]).cumsum()
-all_trades["model_capital"] = notional + (all_trades["model_pnl"]).cumsum()
+optimal_trades["adj_pnl"] = (optimal_trades["return"]/100) * notional
+optimal_trades["adj_capital"] = notional + optimal_trades["adj_pnl"].cumsum()    
 
 plt.figure(dpi=200)
 plt.xticks(rotation = 45)
-plt.suptitle(f"Long: {long_ticker}, Short: {short_ticker}")
-plt.plot(np.arange(0, len(all_trades)), all_trades["base_capital"].values)
-plt.plot(np.arange(0, len(all_trades)), all_trades["model_capital"].values)
-plt.legend(["baseline", "model"])
+plt.suptitle(f"Optimal-Ranked Pairs")
+plt.plot(pd.to_datetime(optimal_trades["date"]).values, optimal_trades["adj_capital"].values)
+plt.legend(["optimal"])
 plt.show()
 plt.close()
 
